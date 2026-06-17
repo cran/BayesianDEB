@@ -41,3 +41,17 @@ A ggplot2 object.
 \description{
 Plot a BDEB Fit
 }
+\examples{
+\donttest{
+if (requireNamespace("cmdstanr", quietly = TRUE) &&
+    nzchar(tryCatch(cmdstanr::cmdstan_path(), error = function(e) ""))) {
+  data(eisenia_growth)
+  dat <- bdeb_data(growth = eisenia_growth[eisenia_growth$id == 1, ])
+  fit <- bdeb_fit(bdeb_model(dat, type = "individual"),
+                  chains = 2, iter_warmup = 200, iter_sampling = 200,
+                  refresh = 0)
+  plot(fit, type = "trace")
+  plot(fit, type = "trajectory", n_draws = 50)
+}
+}
+}

@@ -1,3 +1,94 @@
+# BayesianDEB 0.2.1
+
+Second-round JSS revision: diagnostics display polish, fully runnable
+(toolchain-gated) examples, and replication / manuscript reproducibility
+fixes.
+
+* `print.bdeb_diagnostics()` now prints a compact table by default,
+  hiding the per-time-point latent states (`x_sol[i,j]`, `L_hat[i]`);
+  the new `full = TRUE` argument restores the complete table (also
+  available via `summary(x)$table`).
+* `plot.bdeb_diagnostics()` likewise hides the per-time-point latent
+  states by default for a shorter, more readable R-hat / ESS plot;
+  the new `full = TRUE` argument plots every monitored quantity. The
+  subtitle notes how many latent rows were hidden.
+* `bdeb_diagnose()` and the `bdeb_diagnostics` print/summary/plot
+  methods, plus `bdeb_loo()`, `bdeb_derived()` and `bdeb_summary()`,
+  moved their examples from `\dontrun{}` to a cmdstanr-gated
+  `\donttest{}` block, so `example()` runs them when a CmdStan
+  toolchain is available (mirroring `bdeb_fit()`).
+* `plot_dose_response()` now draws posterior-median EC50 (dashed red)
+  and NEC (dotted green) reference lines, drops non-finite draws, and
+  clips the view with `coord_cartesian()` so degenerate draws no longer
+  appear as vertical artefacts.
+* Replication material: a single-command `replicate_all.R` reproduces
+  every manuscript figure, table and printed number in ~1 min from
+  cached draws; every manuscript code listing is now executed and
+  printed; outputs use a fixed seed for bit-identical reproduction; and
+  the README maps every figure to the script that produces it.
+
+# BayesianDEB 0.2.0
+
+JSS revision release.  Comprehensive S3 class system overhaul,
+expanded methods coverage, and reproducible replication package.
+
+## Breaking changes
+* `bdeb_diagnose()` now returns a `bdeb_diagnostics` S3 object.
+  All output goes through `print()`, `summary()`, and `plot()`
+  (`type = "rhat"` or `"ess"`).  Direct list access still works
+  (`n_divergent`, `summary`, ...).
+* `bdeb_summary()` is deprecated; use `summary(fit)` on a
+  `bdeb_fit` object instead.  The wrapper still works but emits
+  a deprecation warning and will be removed in a future release.
+
+## New methods
+* `bdeb_data`: `print()`, `summary()`, `plot()`.
+* `bdeb_model`: `print()`, `summary()`, `plot()`.
+* `bdeb_prior`: `print()`, `summary()`, `plot()`.
+* `bdeb_prediction`: `print()`, `summary()` (the latter returns a
+  tidy `time / lower / median / upper` data frame).
+* `bdeb_diagnostics`: `print()`, `summary()`, `plot()`.
+* `bdeb_fit` (additional `lm`-style methods): `summary()` (now the
+  primary posterior-summary API, accepts `pars` and `prob`),
+  `confint()` (posterior credible intervals), `fitted()` (posterior
+  median/mean of \eqn{\hat{L}_i}), `residuals()` (observed minus
+  fitted), `nobs()` (observation count), `vcov()` (posterior
+  covariance of model parameters), and `logLik()` (log-pointwise
+  predictive density, lppd).  `fitted()`, `residuals()`, and
+  `logLik()` are available for `"individual"` and `"growth_repro"`
+  models only.
+* `bdeb_derived()` is now an S3 generic with a `bdeb_fit` method
+  (`bdeb_derived.bdeb_fit`).  Existing calls are unchanged; the
+  dispatch enables future support for derived quantities on
+  prior-only or simulated objects.
+
+## Bug fixes
+* `bdeb_diagnose()` no longer fails on real-data fits whose
+  generated quantities (`log_lik`, `L_rep`) contain NaN draws
+  from sporadic ODE-solver failures.  The `summarise_draws()`
+  quantile lambdas now pass `na.rm = TRUE`.
+* `plot()` on a `bdeb_fit` (`type = "trace"`, `"posterior"`,
+  `"pairs"`) now subsets draws to the requested parameters
+  before delegating to `bayesplot`.  Without this, NaN draws in
+  unrelated generated quantities caused
+  `bayesplot::prepare_mcmc_array()` to abort with
+  `"NAs not allowed in 'x'"`.
+
+## Stan
+* Increased `ode_bdf_tol` `max_num_steps` from 1e4 to 1e5 in all
+  four Stan models to reduce CVode mxstep messages during warmup.
+
+## Vignettes
+* Conditional execution via `requireNamespace("cmdstanr")`.
+* Fixed `plot(fit, type = "pairs")` returning `NULL`.
+
+## Replication material
+* Reorganised JSS replication material into a single zip with
+  `README`, `data/`, `outputs/`, and `lite`/`full` execution modes.
+* Bundled `curves.txt` locally to remove external dependency.
+
+---
+
 # BayesianDEB 0.1.4
 
 CRAN-review compliance release.  Addresses reviewer feedback on the use

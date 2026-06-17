@@ -106,6 +106,20 @@ bdeb_tox <- function(data,
 #'   - `summary`: mean, median, sd, lower, upper
 #'   - `NEC`: posterior summary of the no-effect concentration
 #' @export
+#' @examples
+#' \donttest{
+#' if (requireNamespace("cmdstanr", quietly = TRUE) &&
+#'     nzchar(tryCatch(cmdstanr::cmdstan_path(), error = function(e) ""))) {
+#'   data(debtox_growth)
+#'   dat <- bdeb_data(growth = debtox_growth,
+#'                    concentration = c("1" = 0, "11" = 20,
+#'                                     "21" = 80, "31" = 200))
+#'   fit <- bdeb_fit(bdeb_tox(dat, stress = "assimilation"),
+#'                   chains = 2, iter_warmup = 200, iter_sampling = 200,
+#'                   init = 0.5, refresh = 0)
+#'   bdeb_ec50(fit, prob = 0.95)
+#' }
+#' }
 bdeb_ec50 <- function(fit, prob = 0.90, verbose = TRUE) {
 	if (!inherits(fit, "bdeb_fit")) {
 		cli::cli_abort("{.arg fit} must be a {.cls bdeb_fit} object.")
@@ -113,6 +127,14 @@ bdeb_ec50 <- function(fit, prob = 0.90, verbose = TRUE) {
 
 	if (fit$model$type != "debtox") {
 		cli::cli_abort("EC50 extraction requires a DEBtox model fit.")
+	}
+
+	if (!is.numeric(prob) || length(prob) != 1L ||
+	    !is.finite(prob) || prob <= 0 || prob >= 1) {
+		cli::cli_abort("{.arg prob} must be a single number in (0, 1).")
+	}
+	if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
+		cli::cli_abort("{.arg verbose} must be a single logical.")
 	}
 
 	draws <- posterior::as_draws_df(fit$fit$draws())
@@ -199,11 +221,41 @@ bdeb_ec50 <- function(fit, prob = 0.90, verbose = TRUE) {
 #'   Default `NULL`.
 #' @return A ggplot2 object.
 #' @export
+#' @examples
+#' \donttest{
+#' if (requireNamespace("cmdstanr", quietly = TRUE) &&
+#'     nzchar(tryCatch(cmdstanr::cmdstan_path(), error = function(e) ""))) {
+#'   data(debtox_growth)
+#'   dat <- bdeb_data(growth = debtox_growth,
+#'                    concentration = c("1" = 0, "11" = 20,
+#'                                     "21" = 80, "31" = 200))
+#'   fit <- bdeb_fit(bdeb_tox(dat, stress = "assimilation"),
+#'                   chains = 2, iter_warmup = 200, iter_sampling = 200,
+#'                   init = 0.5, refresh = 0)
+#'   plot_dose_response(fit, n_draws = 50)
+#' }
+#' }
 plot_dose_response <- function(fit, endpoint = "growth", n_draws = 100,
                                n_conc = 50, dt = 1.0, t_end = NULL,
                                seed = NULL) {
 	if (!inherits(fit, "bdeb_fit") || fit$model$type != "debtox") {
 		cli::cli_abort("Requires a fitted DEBtox model.")
+	}
+	if (!is.numeric(n_draws) || length(n_draws) != 1L ||
+	    !is.finite(n_draws) || n_draws < 1) {
+		cli::cli_abort("{.arg n_draws} must be a positive scalar (>= 1).")
+	}
+	if (!is.numeric(n_conc) || length(n_conc) != 1L ||
+	    !is.finite(n_conc) || n_conc < 2) {
+		cli::cli_abort("{.arg n_conc} must be a scalar >= 2.")
+	}
+	if (!is.numeric(dt) || length(dt) != 1L ||
+	    !is.finite(dt) || dt <= 0) {
+		cli::cli_abort("{.arg dt} must be a positive scalar.")
+	}
+	if (!is.null(t_end) && (!is.numeric(t_end) || length(t_end) != 1L ||
+	                        !is.finite(t_end) || t_end <= 0)) {
+		cli::cli_abort("{.arg t_end} must be a positive scalar or NULL.")
 	}
 
 	draws <- posterior::as_draws_df(fit$fit$draws())
@@ -275,8 +327,19 @@ plot_dose_response <- function(fit, endpoint = "growth", n_draws = 100,
 		)
 	})
 	pred_df <- do.call(rbind, pred_list)
+	# Drop non-finite predictions so degenerate draws do not break the
+	# spaghetti lines into vertical artefacts.
+	pred_df <- pred_df[is.finite(pred_df$relative), , drop = FALSE]
 
-	ggplot2::ggplot() +
+	# Posterior-median EC50 and NEC (analytic generated quantities), drawn
+	# as vertical reference lines so the plot matches the toxicity summary.
+	ec50 <- if ("EC50" %in% names(draws))
+		stats::median(draws$EC50, na.rm = TRUE) else NA_real_
+	nec  <- if ("NEC" %in% names(draws))
+		stats::median(draws$NEC, na.rm = TRUE) else NA_real_
+	c_max <- max(c_seq)
+
+	p <- ggplot2::ggplot() +
 		ggplot2::geom_line(
 			data = pred_df,
 			ggplot2::aes(x = .data$concentration, y = .data$relative,
@@ -284,7 +347,19 @@ plot_dose_response <- function(fit, endpoint = "growth", n_draws = 100,
 			alpha = 0.1, colour = "steelblue"
 		) +
 		ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed",
-		                    colour = "grey50") +
+		                    colour = "grey50")
+
+	# EC50: dashed red vertical line; NEC: dotted green vertical line.
+	if (is.finite(ec50) && ec50 <= c_max) {
+		p <- p + ggplot2::geom_vline(xintercept = ec50, linetype = "dashed",
+		                             colour = "red", linewidth = 0.7)
+	}
+	if (is.finite(nec) && nec <= c_max) {
+		p <- p + ggplot2::geom_vline(xintercept = nec, linetype = "dotted",
+		                             colour = "forestgreen", linewidth = 0.7)
+	}
+
+	p +
 		ggplot2::geom_point(
 			data = obs_df,
 			ggplot2::aes(x = .data$concentration, y = .data$relative),
@@ -292,9 +367,12 @@ plot_dose_response <- function(fit, endpoint = "growth", n_draws = 100,
 		) +
 		ggplot2::theme_bw() +
 		ggplot2::labs(
-			title = "DEBtox Dose-Response (full model prediction)",
+			title = "DEBtox dose-response (full model prediction)",
+			subtitle = "Dashed red: EC50    Dotted green: NEC",
 			x     = "Concentration",
 			y     = expression(L[final] / L[control])
 		) +
-		ggplot2::scale_y_continuous(limits = c(0, 1.15))
+		# coord_cartesian clips the view WITHOUT dropping data, so extreme
+		# draws are bounded rather than removed (no broken-line spikes).
+		ggplot2::coord_cartesian(ylim = c(0, 1.2))
 }

@@ -40,6 +40,21 @@ The NEC is the threshold concentration below which no effect occurs;
 it corresponds directly to the parameter \eqn{z_w} in the damage
 model of Kooijman & Bedaux (1996).
 }
+\examples{
+\donttest{
+if (requireNamespace("cmdstanr", quietly = TRUE) &&
+    nzchar(tryCatch(cmdstanr::cmdstan_path(), error = function(e) ""))) {
+  data(debtox_growth)
+  dat <- bdeb_data(growth = debtox_growth,
+                   concentration = c("1" = 0, "11" = 20,
+                                    "21" = 80, "31" = 200))
+  fit <- bdeb_fit(bdeb_tox(dat, stress = "assimilation"),
+                  chains = 2, iter_warmup = 200, iter_sampling = 200,
+                  init = 0.5, refresh = 0)
+  bdeb_ec50(fit, prob = 0.95)
+}
+}
+}
 \references{
 Kooijman, S.A.L.M. and Bedaux, J.J.M. (1996). \emph{The Analysis of
 Aquatic Toxicity Data}. VU University Press, Amsterdam.
